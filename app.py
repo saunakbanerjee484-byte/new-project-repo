@@ -35,9 +35,9 @@ with tab_hydro:
     st.info("Plot Plotly hydrographs per utils.registry.STATIONS station here.")
 
 with tab_damBreak:
-    # The interactive dam-break / breach simulator lives in its own module
-    # so it can also be run standalone: `streamlit run dam_break_dashboard.py`
-    from dam_break_dashboard import render_dam_break_tab
+    # dam_break_dashboard.py now lives in calculator/ (moved from the
+    # project root) -- import it as a package module instead.
+    from calculator.dam_break_dashboard import render_dam_break_tab
     render_dam_break_tab()
 
 with tab_forecast:

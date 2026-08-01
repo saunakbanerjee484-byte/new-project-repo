@@ -1,34 +1,64 @@
 {
-  "_comment": "District-wise water level thresholds (m). Replace with CWC/WB-SWD gauge datum values per station before production use.",
   "districts": {
-    "Bardhaman": {
-      "station_ids": ["DURGAPUR_BARRAGE"],
-      "warning_level_m": 55.0,
-      "danger_level_m": 57.5,
-      "extreme_danger_level_m": 59.0
+    "Jhargram": {
+      "river": "Subarnarekha",
+      "station": "Gopiballavpur",
+      "warning_level_m": 94.00,
+      "danger_level_m": 95.50
     },
-    "Hooghly": {
-      "station_ids": ["HOOGHLY_RIVER_01"],
-      "warning_level_m": 12.0,
-      "danger_level_m": 14.0,
-      "extreme_danger_level_m": 15.5
+    "Paschim_Burdwan": {
+      "river": "Damodar",
+      "station": "Durgapur Barrage",
+      "warning_level_m": 65.00,
+      "danger_level_m": 68.20
     },
-    "Purba_Bardhaman": {
-      "station_ids": ["PANCHET_DAM"],
-      "warning_level_m": 128.0,
-      "danger_level_m": 130.5,
-      "extreme_danger_level_m": 132.0
+    "Purba_Burdwan": {
+      "river": "Damodar",
+      "station": "Raidih / Mateswari",
+      "warning_level_m": 30.00,
+      "danger_level_m": 32.50
     },
     "Howrah": {
-      "station_ids": ["RUPNARAYAN_01"],
-      "warning_level_m": 6.0,
-      "danger_level_m": 7.5,
-      "extreme_danger_level_m": 8.5
+      "river": "Hooghly / Rupnarayan",
+      "station": "Damal",
+      "warning_level_m": 4.50,
+      "danger_level_m": 5.20
+    },
+    "Hooghly": {
+      "river": "Damodar / Dwarakeswar",
+      "station": "Arambagh",
+      "warning_level_m": 10.50,
+      "danger_level_m": 12.00
+    },
+    "Murshidabad": {
+      "river": "Ganga / Bhagirathi",
+      "station": "Farakka / Berhampore",
+      "warning_level_m": 18.50,
+      "danger_level_m": 20.25
+    },
+    "Malda": {
+      "river": "Ganga / Fulahar",
+      "station": "Mathurapur",
+      "warning_level_m": 22.00,
+      "danger_level_m": 23.25
+    },
+    "Nadia": {
+      "river": "Jalangi / Mathabhanga",
+      "station": "Nabadwip",
+      "warning_level_m": 13.00,
+      "danger_level_m": 14.20
+    },
+    "Birbhum": {
+      "river": "Mayurakshi / Ajay",
+      "station": "Tilpara",
+      "warning_level_m": 35.00,
+      "danger_level_m": 37.00
+    },
+    "Purulia": {
+      "river": "Kangsabati / Subarnarekha",
+      "station": "Ayodhya Base",
+      "warning_level_m": 150.00,
+      "danger_level_m": 153.50
     }
-  },
-  "rainfall_thresholds_mm_24h": {
-    "heavy": 65,
-    "very_heavy": 115,
-    "extremely_heavy": 205
   }
 }

@@ -1,16 +1,17 @@
 """
 utils/cache.py
 
-Caching layer for live API responses. Uses Redis when USE_REDIS=true and
-reachable; otherwise transparently falls back to an in-process TTL
-dict cache so the app still runs without a Redis instance (e.g. local dev).
+Caching layer for live API responses. Uses Redis when settings.USE_REDIS
+is true and reachable; otherwise transparently falls back to an
+in-process TTL dict cache so the app still runs without a Redis instance
+(e.g. local dev).
 """
 
 import json
 import time
 from typing import Any, Optional
 
-from config.settings import REDIS_URL, CACHE_TTL_SECONDS, USE_REDIS
+from config.settings import USE_REDIS, REDIS_URL, CACHE_TTL_SECONDS
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -44,7 +45,8 @@ def get_cached(key: str) -> Optional[Any]:
     return value
 
 
-def set_cached(key: str, value: Any, ttl: int = CACHE_TTL_SECONDS) -> None:
+def set_cached(key: str, value: Any, ttl: int = None) -> None:
+    ttl = CACHE_TTL_SECONDS if ttl is None else ttl
     if _redis_client is not None:
         _redis_client.setex(key, ttl, json.dumps(value))
         return
