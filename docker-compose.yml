@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    ports:
+      - "8501:8501"
+    environment:
+      - POSTGRES_DSN=postgresql://deltapulse:deltapulse@db:5432/deltapulse
+      - REDIS_URL=redis://cache:6379/0
+      - USE_REDIS=true
+      - USE_TIMESCALEDB=true
+    depends_on:
+      - db
+      - cache
+    volumes:
+      - ./data:/app/data
+      - ./models_store:/app/models_store
+
+  worker:
+    build: .
+    command: ["python", "-m", "workers.scheduler"]
+    environment:
+      - POSTGRES_DSN=postgresql://deltapulse:deltapulse@db:5432/deltapulse
+      - REDIS_URL=redis://cache:6379/0
+      - USE_REDIS=true
+    depends_on:
+      - db
+      - cache
+    volumes:
+      - ./data:/app/data
+
+  db:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      - POSTGRES_USER=deltapulse
+      - POSTGRES_PASSWORD=deltapulse
+      - POSTGRES_DB=deltapulse
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  cache:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+volumes:
+  pgdata:
+  redisdata:
