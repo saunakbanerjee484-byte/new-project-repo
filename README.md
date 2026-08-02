@@ -1,27 +1,11 @@
-# 🌊 DeltaPulse Command Center: Real-Time Flood Intelligence & Geotechnical Workstation
+readme_content = """# 🌊 DeltaPulse Command Center
 
-Welcome to **DeltaPulse**, an advanced, production-grade hydro-meteorological intelligence and geotechnical engineering workstation. Built for rigorous academic and engineering standards, this platform integrates real-time basin telemetry, advanced hydraulic routing engines, and a specialized geotechnical workstation for earth dam safety analysis.
+**Real-Time Flood Intelligence & Geotechnical Workstation**
+
+Welcome to DeltaPulse, an advanced, production-grade hydro-meteorological intelligence and geotechnical engineering workstation. Built for rigorous academic and engineering standards, this platform integrates real-time basin telemetry, advanced hydraulic routing engines, and a specialized geotechnical workstation for earth dam safety analysis.
 
 ---
 
-## 🏗️ System Architecture & Directory Structure
-
-The project follows a clean architecture pattern, separating UI components from the core physics and mathematical engines.
-
-```text
-wb_flood_intelligence/
-│
-├── app.py                      # Main Streamlit Command Center entry point
-├── config/
-│   └── thresholds.json         # CWC district-wise flood threshold metrics
-├── engines/
-│   ├── embankment.py           # Core Casagrande & Terzaghi seepage/piping physics engine
-│   ├── EarthDamSeepage.py      # Advanced geotechnical workstation backend (anisotropy, filters, liquefaction)
-│   └── hydrograph_engine.py    # 12-feature hydraulic and routing calculation core
-└── calculator/
-    ├── dam_break_dashboard.py    # Dam-break hydrodynamic simulation panel
-    └── geotechnical_dashboard.py # Earth-tone glassmorphic geotechnical UI tab
-    Markdown
 ## 🚀 Core Features & Implemented Modules
 
 ### 📍 1. Live Basin Status & Telemetry
@@ -36,10 +20,9 @@ wb_flood_intelligence/
 * **Synthetic Storm Generator:** Simulate extreme events like monsoon fronts or heavy cloudburst scenarios with dual-axis hyetographs.
 
 ### ⛰️ 3. Geotechnical Workstation (Earth Dam Seepage Suite)
-Features a specialized UI theme (warm amber and terracotta glassmorphism) representing the intersection of soil mechanics and fluid dynamics.
-
-* **Casagrande Base Parabola & Phreatic Line:** Computes steady-state unconfined seepage profiles with $0.3L$ upstream corrections and empirical exit-face adjustments.
-* **Anisotropic Permeability Analysis:** Evaluates stratified dam cores using transformed-section methods ($k_x \neq k_z$).
+* **Specialized UI:** Features a warm amber and terracotta glassmorphism theme representing the intersection of soil mechanics and fluid dynamics.
+* **Casagrande Base Parabola & Phreatic Line:** Computes steady-state unconfined seepage profiles with 0.3L upstream corrections and empirical exit-face adjustments.
+* **Anisotropic Permeability Analysis:** Evaluates stratified dam cores using transformed-section methods ($k_x \\neq k_z$).
 * **Soil Type Auto-Selector:** Instantaneous order-of-magnitude property lookups for gravels, sands, and silty clays.
 * **Terzaghi Filter Criteria Checker:** Validates granular stability ratios ($D_{15f}/D_{85b}$ and $D_{15f}/D_{15b}$) to prevent piping failure.
 * **Seed-Idriss Liquefaction Module:** Simplified evaluation of cyclic stress ratios (CSR) versus SPT-corrected cyclic resistance ratios (CRR).
@@ -58,4 +41,25 @@ The following advanced modules are systematically structured in the platform roa
 * 🔜 **Wave Overtopping & Crest Erosion Rate:** Broad-crested weir outflow mechanics paired with surface erodibility tracking.
 * 🔜 **Saturated-Unsaturated Transient Seepage:** Finite-element/finite-difference time-stepping solutions of Richards' equation utilizing van Genuchten soil-water characteristic curves.
 
+---
 
+## 💻 How to Run the Application
+
+Follow these steps to set up and launch the DeltaPulse Command Center locally on your machine.
+
+### Prerequisites
+* Python 3.9+ is required.
+* Ensure you are operating within the root directory (`wb_flood_intelligence/`).
+
+### Step 1: Install Dependencies
+Install the required scientific and visualization libraries via pip:
+```bash
+pip install streamlit pandas numpy plotly
+### Step 2 :Step 2: Clear Python Bytecode Cache (Recommended)
+To ensure clean imports and prevent the system from using stale bytecode after structural updates, run these commands in your terminal.
+### For Windows:
+python -Bc "import pathlib; [p.unlink() for p in pathlib.Path('.').rglob('*.py[co]')]"
+python -Bc "import pathlib; [p.rmdir() for p in pathlib.Path('.').rglob('__pycache__') if p.is_dir()]"
+###Step 3: Launch the Command Center
+Start the local Streamlit web server:
+python -m streamlit run app.py
