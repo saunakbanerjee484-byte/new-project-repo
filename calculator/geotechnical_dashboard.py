@@ -20,9 +20,8 @@ Implemented, real, verified panels:
     - Terzaghi filter-criteria checker
     - Seed-Idriss liquefaction calculator
     - Piping factor of safety (from the base EarthDamSeepage class)
-Roadmap panel: the 9 not-yet-implemented advanced features, shown
-honestly as "planned" rather than faked -- see
-engines/EarthDamSeepage.py's module docstring for why.
+    - Slope Stability & Erosion (Bishop/Janbu, Drawdown, Piping, Overtopping)
+    - Transient Seepage (1D & 2D Richards' Equation Dynamics)
 
 Run standalone: streamlit run calculator/geotechnical_dashboard.py
 Or import render_geotechnical_tab() into app.py as a tab.
@@ -45,6 +44,17 @@ from engines.EarthDamSeepage import (
     anisotropic_phreatic_line, terzaghi_filter_check,
     liquefaction_factor_of_safety,
 )
+
+# Robust Import Fix for VS Code (Pylance) and Streamlit Execution
+try:
+    # When imported from app.py at the project root
+    from calculator.slope_stability_dashboard import render_slope_stability_tab
+    from calculator.seepage_transient_dashboard import render_transient_seepage_tab
+except ImportError:
+    # When run standalone or if VS Code path is acting up
+    from slope_stability_dashboard import render_slope_stability_tab
+    from seepage_transient_dashboard import render_transient_seepage_tab
+
 
 # ---------------------------------------------------------------------------
 # Theme: warm amber/terracotta glassmorphism, layered on the app's base
@@ -130,7 +140,7 @@ def render_geotechnical_tab():
     st.subheader("🟤 Geotechnical Workstation -- Earth Dam / Embankment Seepage")
     st.caption(
         "Soil mechanics meets hydraulics: phreatic line, filter design, liquefaction, "
-        "and piping analysis for earth embankments -- engines.embankment / engines.EarthDamSeepage."
+        "piping analysis, transient seepage, and slope stability for earth embankments -- engines.embankment / engines.EarthDamSeepage."
     )
 
     with st.sidebar:
@@ -143,8 +153,8 @@ def render_geotechnical_tab():
         has_filter = st.checkbox("Has horizontal toe filter/drain", value=False, key="geo_filter_on")
         filter_len = st.slider("Filter length (m)", 2.0, 40.0, 10.0, key="geo_filter_len") if has_filter else None
 
-    tab_phreatic, tab_soil, tab_filter, tab_liq, tab_piping, tab_roadmap = st.tabs(
-        ["Phreatic Line", "Soil Selector", "Filter Criteria", "Liquefaction", "Piping FoS", "Roadmap"]
+    tab_phreatic, tab_soil, tab_filter, tab_liq, tab_piping, tab_slope_stability, tab_transient, tab_roadmap = st.tabs(
+        ["Phreatic Line", "Soil Selector", "Filter Criteria", "Liquefaction", "Piping FoS", "Slope Stability & Erosion", "Transient Seepage", "Roadmap"]
     )
 
     # =======================================================================
@@ -290,30 +300,30 @@ def render_geotechnical_tab():
             st.markdown(f'<div class="{cls}">Status: {fos["status"].upper()}</div>', unsafe_allow_html=True)
 
     # =======================================================================
-    # Tab: Roadmap (honest, not faked)
+    # Tab: Slope Stability & Erosion
+    # =======================================================================
+    with tab_slope_stability:
+        render_slope_stability_tab()
+
+    # =======================================================================
+    # Tab: Transient Seepage (1D & 2D Richards' Equation Dynamics)
+    # =======================================================================
+    with tab_transient:
+        render_transient_seepage_tab()
+
+    # =======================================================================
+    # Tab: Roadmap (honest, not faked) - Updated
     # =======================================================================
     with tab_roadmap:
         _section_header("Roadmap -- Not Yet Implemented")
         st.caption(
-            "These need their own dedicated solvers (slip-surface search, PDE time-stepping, "
+            "These need their own dedicated solvers (PDE time-stepping, "
             "product-specific parameters) rather than a single formula -- listed honestly as "
             "planned instead of filled in with unverified numbers."
         )
         roadmap_items = [
-            ("Bishop's Simplified / Janbu's Generalized slope stability",
-             "Circular/non-circular slip-surface search + slice equilibrium"),
-            ("Rapid drawdown transient seepage",
-             "Bishop/Morgenstern pore-pressure ratio, built on the slope-stability engine above"),
-            ("Progressive piping & internal erosion rate",
-             "Hanson erodibility-index method, needs a jet-erosion-test input"),
-            ("Frost heave / freeze-thaw pore pressure",
-             "Segregation-potential (Konrad & Morgenstern) model, needs lab-measured SP"),
             ("Geosynthetic reinforcement pullout",
              "FHWA pullout formula, needs manufacturer-specific interaction coefficients"),
-            ("Wave overtopping & crest erosion rate",
-             "Broad-crested weir discharge + Hanson erodibility (named source formula unverifiable)"),
-            ("Saturated-unsaturated transient seepage",
-             "Richards' equation, van Genuchten/Brooks-Corey parameters, FE/FD time-stepping"),
         ]
         for title, note in roadmap_items:
             st.markdown(f'<div class="geo-roadmap-card"><b>🔜 {title}</b><br>{note}</div>', unsafe_allow_html=True)
