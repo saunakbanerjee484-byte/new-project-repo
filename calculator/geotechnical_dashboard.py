@@ -44,6 +44,7 @@ from engines.EarthDamSeepage import (
     anisotropic_phreatic_line, terzaghi_filter_check,
     liquefaction_factor_of_safety,
 )
+from engines.soil_moisture import VanGenuchtenModel
 
 # Robust Import Fix for VS Code (Pylance) and Streamlit Execution
 try:
@@ -194,6 +195,88 @@ def render_geotechnical_tab():
 
         fig.update_layout(title="Dam Cross-Section & Seepage (Phreatic) Line", xaxis_title="Distance from toe (m)",
                            yaxis_title="Elevation (m)", height=450, plot_bgcolor="rgba(0,0,0,0)")
+
+        # -------------------------------------------------------------------
+        # INJECTED ADVANCED SLOPE ENGINE (PHASE 1 INTEGRATION)
+        # -------------------------------------------------------------------
+        try:
+            from engines.advanced_slope_engine import AdvancedSlopeEngine
+            
+            with st.expander("⚡ Coupled Advanced Stability Analysis (Grid Search, Seismic, Drawdown)"):
+                st.markdown("Run limit-equilibrium stability directly over this seepage profile.")
+                
+                sc1, sc2, sc3 = st.columns(3)
+                adv_c = sc1.number_input("Effective Cohesion c' (kPa)", value=15.0, key="adv_c")
+                adv_phi = sc2.number_input("Effective Friction φ' (°)", value=30.0, key="adv_phi")
+                adv_gamma = sc3.number_input("Unit Weight γ (kN/m³)", value=19.0, key="adv_gam")
+                
+                hc1, hc2, hc3 = st.columns(3)
+                run_search = hc1.checkbox("🔍 Run Critical Slip Search (Grid Heatmap)", value=False, key="adv_run_search")
+                k_h_input = hc2.slider("Seismic Coefficient kh (g)", 0.0, 0.5, 0.0, 0.05, key="adv_kh")
+                
+                do_drawdown = hc3.checkbox("🌊 Rapid Drawdown", key="adv_dd_check")
+                drawdown_val = hc3.slider("New Water Level (m)", 0.0, float(water_depth), float(water_depth)/2, key="adv_dd_val") if do_drawdown else None
+                
+                run_mc = st.checkbox("🎲 Run Monte Carlo Probabilistic Analysis (500 iterations)", value=False, key="adv_mc_check")
+
+                if run_search:
+                    adv_engine = AdvancedSlopeEngine(
+                        dam_height_m=dam_height, water_depth_m=water_depth,
+                        m_u=m_u, m_d=m_d, crest_width_m=crest,
+                        c_prime_kpa=adv_c, phi_prime_deg=adv_phi, unit_weight_kn_m3=adv_gamma
+                    )
+                    
+                    with st.spinner("Calculating mechanics for thousands of trial slip surfaces..."):
+                        search_res = adv_engine.search_critical_slip_surface(
+                            grid_nx=12, grid_ny=12, k_h=k_h_input, drawdown_water_depth_m=drawdown_val
+                        )
+                    
+                    min_fos = search_res["min_fos"]
+                    
+                    if len(search_res["arc_x"]) > 0:
+                        arc_color = "#dc2626" if min_fos < 1.0 else ("#f59e0b" if min_fos < 1.3 else "#16a34a")
+                        fig.add_trace(go.Scatter(
+                            x=search_res["arc_x"], y=search_res["arc_y"], 
+                            mode='lines', line=dict(color=arc_color, width=3, dash='dot'),
+                            name=f"Critical Slip (FoS = {min_fos:.2f})"
+                        ))
+                        
+                        gx, gy = np.meshgrid(search_res["grid_xc"], search_res["grid_yc"])
+                        valid_mask = ~np.isnan(search_res["grid_heatmap"])
+                        
+                        fig.add_trace(go.Scatter(
+                            x=gx[valid_mask], y=gy[valid_mask], mode='markers',
+                            marker=dict(
+                                color=search_res["grid_heatmap"][valid_mask],
+                                colorscale="RdYlGn", showscale=True,
+                                size=6, colorbar=dict(title="FoS", len=0.5, y=0.8, x=1.1)
+                            ),
+                            name="Grid Centers Heatmap"
+                        ))
+                        
+                        if k_h_input > 0:
+                            x_mid = m_d * dam_height + crest / 2
+                            fig.add_annotation(
+                                x=x_mid + 5, y=dam_height/2,
+                                ax=x_mid - 5, ay=dam_height/2,
+                                xref="x", yref="y", axref="x", ayref="y",
+                                showarrow=True, arrowhead=2, arrowsize=1.5, arrowwidth=3, arrowcolor="#dc2626",
+                                text=f"Inertial Force (k_h={k_h_input}g)"
+                            )
+
+                    status_color = "red" if min_fos < 1.0 else ("orange" if min_fos < 1.3 else "green")
+                    st.markdown(f"**Critical Factor of Safety (FoS):** <span style='color:{status_color}; font-size:1.2em; font-weight:bold;'>{min_fos:.2f}</span>", unsafe_allow_html=True)
+                    
+                    if run_mc and search_res["best_circle"]:
+                        with st.spinner("Running Monte Carlo simulations..."):
+                            mc_res = adv_engine.run_monte_carlo_simulation(
+                                search_res["best_circle"], num_simulations=500, k_h=k_h_input, drawdown_water_depth_m=drawdown_val
+                            )
+                        st.info(f"📊 **Probability of Failure (PoF): {mc_res['pof_percent']:.1f}%** | Mean FoS: {mc_res['mean_fos']:.2f} (± {mc_res['std_fos']:.2f})")
+        except ImportError:
+            st.error("Engine missing. Ensure `engines/advanced_slope_engine.py` exists.")
+        # -------------------------------------------------------------------
+
         st.plotly_chart(fig, use_container_width=True)
 
         engine = AdvancedEmbankmentEngine(dam_height, water_depth, m_u, m_d, crest,
@@ -203,19 +286,288 @@ def render_geotechnical_tab():
                     f'q = k·s₀ = <b>{q:.3e} m²/s</b> ({q*86400:.4f} m²/day)</div>', unsafe_allow_html=True)
 
     # =======================================================================
-    # Tab: Soil selector
+    # Tab: Soil selector (PHASE 1, 2 & 3 - ULTIMATE GEOTECH LAB)
     # =======================================================================
     with tab_soil:
-        _section_header("Soil Type & Permeability Auto-Selector")
-        soil_choice = st.selectbox("Soil type", list(SOIL_LIBRARY.keys()),
-                                    format_func=lambda k: SOIL_LIBRARY[k].name, key="geo_soil_choice")
+        _section_header("Soil Profile & Geomechanical Mechanics")
+        
+        # -------------------------------------------------------------------
+        # BASE INPUT
+        # -------------------------------------------------------------------
+        soil_choice = st.selectbox("Select Soil Material", list(SOIL_LIBRARY.keys()),
+                                    format_func=lambda k: SOIL_LIBRARY[k].name, key="geo_soil_choice_master")
         props = select_soil_properties(soil_choice)
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Permeability k (m/s)", f"{props.permeability_mps_range[0]:.0e} - {props.permeability_mps_range[1]:.0e}")
-        c2.metric("Void ratio e", f"{props.void_ratio_range[0]:.2f} - {props.void_ratio_range[1]:.2f}")
-        c3.metric("Specific gravity Gs", f"{props.specific_gravity:.2f}")
-        c4.metric("D50 (mm)", f"{props.d50_mm_range[0]:.3g} - {props.d50_mm_range[1]:.3g}")
-        st.caption("Typical ranges only (textbook order-of-magnitude bands) -- lab-test the actual borrow material for final design.")
+        
+        st.markdown("---")
+        
+        # ===================================================================
+        # [PHASE 1]: FOUNDATION & UI OVERHAUL (The Face)
+        # ===================================================================
+        col_metrics, col_visuals = st.columns([1, 1.2])
+        
+        with col_metrics:
+            st.markdown("### 📊 Phase 1: Engineering Parameters")
+            # Feature 3: Glassmorphism styled metrics
+            st.markdown(f'''
+            <div class="geo-glass-card">
+                <b>Permeability k (m/s):</b><br>
+                <span style="font-size:1.4rem; color:{WATER_ACCENT};">{props.permeability_mps_range[0]:.0e} - {props.permeability_mps_range[1]:.0e}</span>
+            </div>
+            <div class="geo-glass-card">
+                <b>Void Ratio (e):</b><br>
+                <span style="font-size:1.4rem; color:{EARTH_TERRACOTTA};">{props.void_ratio_range[0]:.2f} - {props.void_ratio_range[1]:.2f}</span>
+            </div>
+            <div class="geo-glass-card">
+                <b>Specific Gravity (Gs) & D50:</b><br>
+                <span style="font-size:1.2rem; color:{EARTH_BROWN};">Gs = {props.specific_gravity:.2f} | D50 = {props.d50_mm_range[0]:.3g} to {props.d50_mm_range[1]:.3g} mm</span>
+            </div>
+            ''', unsafe_allow_html=True)
+
+            # Feature 2: Smart Context Badge
+            avg_k = np.mean(props.permeability_mps_range)
+            if avg_k < 1e-7:
+                st.info("🧱 **Suitability:** Excellent for Impervious Cores & Seepage Barriers.")
+            elif avg_k > 1e-4:
+                st.warning("🌊 **Suitability:** Highly permeable. Good for filters and drainage zones.")
+            else:
+                st.success("⚖️ **Suitability:** Moderate permeability. Suitable for general embankment shell.")
+
+        with col_visuals:
+            st.markdown("### 📈 Phase 1: Particle Size Distribution")
+            
+            # Feature 1: Generating a simulated S-curve based on D50
+            avg_d50 = np.mean(props.d50_mm_range)
+            x_grain_sizes = np.logspace(np.log10(avg_d50/20), np.log10(avg_d50*20), 100)
+            y_passing = 100 / (1 + np.exp(-2.5 * (np.log10(x_grain_sizes) - np.log10(avg_d50))))
+            
+            fig_psd = go.Figure()
+            fig_psd.add_trace(go.Scatter(x=x_grain_sizes, y=y_passing, mode='lines', 
+                                         line=dict(color=EARTH_BROWN, width=3), name="Estimated PSD"))
+            fig_psd.add_trace(go.Scatter(x=[avg_d50], y=[50], mode='markers', 
+                                         marker=dict(color=WATER_ACCENT, size=10), name="D50 (Median)"))
+            
+            fig_psd.update_layout(
+                xaxis_type="log", xaxis_title="Grain Size (mm) [Log Scale]",
+                yaxis_title="Percent Passing (%)", yaxis=dict(range=[0, 100]),
+                height=350, margin=dict(l=20, r=20, t=30, b=20),
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"
+            )
+            
+            # Feature 4: USCS Classification Reference Lines
+            fig_psd.add_vline(x=0.075, line_dash="dash", line_color="gray", annotation_text="Silt | Sand", annotation_position="top left")
+            fig_psd.add_vline(x=4.75, line_dash="dash", line_color="gray", annotation_text="Sand | Gravel", annotation_position="top left")
+            st.plotly_chart(fig_psd, use_container_width=True)
+
+        st.markdown("---")
+
+        # ===================================================================
+        # [PHASE 2]: CORE MECHANICS & ENGINE INTEGRATION (The Muscle)
+        # ===================================================================
+        st.markdown("### ⚙️ Phase 2: Advanced Geomechanical Diagnostics")
+        
+        col_p2_1, col_p2_2 = st.columns(2)
+        
+        with col_p2_1:
+            # Feature 6: Mohr-Coulomb Shear Strength Envelope
+            st.markdown("#### Mohr-Coulomb Failure Envelope")
+            st.caption("Live strength mechanics (τ = c' + σ' tan φ')")
+            
+            c2_1, c2_2 = st.columns(2)
+            c_prime = c2_1.slider("Effective Cohesion c' (kPa)", 0.0, 50.0, 15.0, key="mc_c")
+            phi_prime = c2_2.slider("Effective Friction φ' (°)", 15.0, 45.0, 30.0, key="mc_phi")
+            
+            sigma = np.linspace(0, 500, 100)
+            tau = c_prime + sigma * np.tan(np.radians(phi_prime))
+            
+            fig_mc = go.Figure()
+            fig_mc.add_trace(go.Scatter(x=sigma, y=tau, mode='lines', line=dict(color='#dc2626', width=3), name="Failure Envelope"))
+            
+            # Dummy Mohr's circle touching the envelope
+            sigma_3, sigma_1 = 100, 300
+            center = (sigma_1 + sigma_3) / 2
+            radius = (sigma_1 - sigma_3) / 2
+            theta_arr = np.linspace(0, np.pi, 100)
+            circle_x = center + radius * np.cos(theta_arr)
+            circle_y = radius * np.sin(theta_arr)
+            fig_mc.add_trace(go.Scatter(x=circle_x, y=circle_y, mode='lines', fill='tozeroy', fillcolor='rgba(120, 53, 15, 0.2)', line=dict(color=EARTH_BROWN, dash='dash'), name="Mohr Circle"))
+            
+            fig_mc.update_layout(
+                xaxis_title="Effective Normal Stress σ' (kPa)", yaxis_title="Shear Stress τ (kPa)",
+                height=350, margin=dict(l=20, r=20, t=30, b=20), plot_bgcolor="rgba(0,0,0,0)"
+            )
+            st.plotly_chart(fig_mc, use_container_width=True)
+
+        with col_p2_2:
+            # Feature 7: Casagrande Plasticity Chart
+            st.markdown("#### Casagrande Plasticity Chart")
+            st.caption("Fines classification (A-Line & U-Line Boundaries)")
+            
+            LL = np.linspace(0, 100, 100)
+            A_line = 0.73 * (LL - 20)
+            U_line = 0.9 * (LL - 8)
+            A_line[A_line < 0] = 0
+            U_line[U_line < 0] = 0
+            
+            fig_casa = go.Figure()
+            fig_casa.add_trace(go.Scatter(x=LL, y=A_line, mode='lines', line=dict(color=EARTH_BROWN, width=2), name="A-Line"))
+            fig_casa.add_trace(go.Scatter(x=LL, y=U_line, mode='lines', line=dict(color='gray', dash='dash'), name="U-Line"))
+            
+            if avg_k < 1e-8:
+                sim_LL, sim_PI, stype = 70, 45, "CH (High Plasticity)"
+            elif avg_k < 1e-6:
+                sim_LL, sim_PI, stype = 35, 15, "CL/ML (Low Plasticity)"
+            else:
+                sim_LL, sim_PI, stype = 10, 0, "Non-Plastic (Sand/Gravel)"
+                
+            fig_casa.add_trace(go.Scatter(x=[sim_LL], y=[sim_PI], mode='markers', marker=dict(color=WATER_ACCENT, size=12, symbol='star'), name=f"Est. Zone: {stype}"))
+            
+            fig_casa.update_layout(
+                xaxis_title="Liquid Limit (LL) %", yaxis_title="Plasticity Index (PI) %",
+                xaxis=dict(range=[0, 100]), yaxis=dict(range=[0, 60]),
+                height=350, margin=dict(l=20, r=20, t=30, b=20), plot_bgcolor="rgba(0,0,0,0)"
+            )
+            st.plotly_chart(fig_casa, use_container_width=True)
+
+        # Feature 5: Dynamic SWCC Visualizer
+        st.markdown("#### Soil-Water Characteristic Curve (SWCC)")
+        st.caption("van Genuchten parameters linked to Richards' Engine (Unsaturated Flow)")
+        
+        if avg_k < 1e-7:
+            vg_soil = VanGenuchtenModel(theta_s=0.45, theta_r=0.06, alpha=0.1, n=1.2, k_sat=avg_k)
+        elif avg_k > 1e-4:
+            vg_soil = VanGenuchtenModel(theta_s=0.35, theta_r=0.04, alpha=1.5, n=3.0, k_sat=avg_k)
+        else:
+            vg_soil = VanGenuchtenModel(theta_s=0.40, theta_r=0.05, alpha=0.5, n=1.5, k_sat=avg_k)
+            
+        suction_heads = -np.logspace(-2, 3, 200)
+        theta_vals = vg_soil.volumetric_water_content(suction_heads)
+        
+        fig_swcc = go.Figure()
+        fig_swcc.add_trace(go.Scatter(x=np.abs(suction_heads), y=theta_vals, mode='lines', line=dict(color=WATER_ACCENT, width=3), name="Moisture Retention (θ)"))
+        
+        fig_swcc.update_layout(
+            xaxis_type="log", xaxis_title="Suction Head |h| (m) [Log Scale]",
+            yaxis_title="Volumetric Water Content (θ)", yaxis=dict(range=[0, 0.5]),
+            height=300, margin=dict(l=20, r=20, t=30, b=20), plot_bgcolor="rgba(0,0,0,0)"
+        )
+        st.plotly_chart(fig_swcc, use_container_width=True)
+
+        # ===================================================================
+        # [PHASE 3]: GOD-LEVEL SIMULATORS & ADVANCED DIAGNOSTICS (The Brain)
+        # ===================================================================
+        st.markdown("---")
+        st.markdown("### 🧠 Phase 3: Ultimate Geotechnical Simulators")
+        
+        col_p3_1, col_p3_2 = st.columns(2)
+        
+        with col_p3_1:
+            # Feature 8: Proctor Compaction Curve Simulator
+            st.markdown("#### Proctor Compaction Simulator")
+            st.caption("Theoretical Dry Density vs. Moisture Content (with ZAV line)")
+            
+            if avg_k < 1e-7:
+                omc, mdd = 16.0, 17.5
+            elif avg_k > 1e-4:
+                omc, mdd = 9.0, 20.5
+            else:
+                omc, mdd = 13.0, 18.8
+                
+            w = np.linspace(omc - 7, omc + 7, 100)
+            gamma_w = 9.81
+            Gs = props.specific_gravity
+            zav_gamma = (Gs * gamma_w) / (1 + (w/100) * Gs)
+            
+            gamma_d = mdd - 0.05 * (w - omc)**2
+            gamma_d[gamma_d > zav_gamma] = np.nan
+            
+            fig_proctor = go.Figure()
+            fig_proctor.add_trace(go.Scatter(x=w, y=gamma_d, mode='lines', line=dict(color=EARTH_BROWN, width=3), name="Compaction Curve"))
+            fig_proctor.add_trace(go.Scatter(x=w, y=zav_gamma, mode='lines', line=dict(color=WATER_ACCENT, dash='dash'), name="100% Saturation (ZAV)"))
+            fig_proctor.add_trace(go.Scatter(x=[omc], y=[mdd], mode='markers', marker=dict(color='#dc2626', size=10), name=f"OMC = {omc}%<br>MDD = {mdd}"))
+            
+            fig_proctor.update_layout(
+                xaxis_title="Moisture Content w (%)", yaxis_title="Dry Density γd (kN/m³)",
+                height=350, margin=dict(l=20, r=20, t=30, b=20), plot_bgcolor="rgba(0,0,0,0)"
+            )
+            st.plotly_chart(fig_proctor, use_container_width=True)
+
+            # Feature 9: 1D Consolidation Curve
+            st.markdown("#### 1D Consolidation Settlement")
+            st.caption("Visualizing compressibility and settlement potential (e-log σ')")
+            
+            sigma_eff = np.logspace(0, 3, 100)
+            sigma_c = 100
+            e0 = np.mean(props.void_ratio_range)
+            
+            Cc = 0.4 if avg_k < 1e-7 else (0.05 if avg_k > 1e-4 else 0.15)
+            Cr = Cc / 6.0
+            
+            e_vals = np.where(sigma_eff < sigma_c,
+                              e0 - Cr * np.log10(sigma_eff / 10),
+                              (e0 - Cr * np.log10(sigma_c / 10)) - Cc * np.log10(sigma_eff / sigma_c))
+            
+            fig_consol = go.Figure()
+            fig_consol.add_trace(go.Scatter(x=sigma_eff, y=e_vals, mode='lines', line=dict(color=EARTH_TERRACOTTA, width=3), name="Compression"))
+            fig_consol.add_vline(x=sigma_c, line_dash="dash", line_color="gray", annotation_text="Pre-consolidation")
+            
+            fig_consol.update_layout(
+                xaxis_type="log", xaxis_title="Effective Stress σ' (kPa) [Log Scale]", yaxis_title="Void Ratio (e)",
+                height=350, margin=dict(l=20, r=20, t=30, b=20), plot_bgcolor="rgba(0,0,0,0)"
+            )
+            st.plotly_chart(fig_consol, use_container_width=True)
+
+        with col_p3_2:
+            # Feature 10: Permeability Anisotropy Ellipse
+            st.markdown("#### Permeability Anisotropy Ellipse")
+            st.caption("Visualize directional flow dominance (kx vs kz)")
+            
+            anisotropy_ratio = st.slider("Anisotropy Ratio (kx / kz)", 1.0, 10.0, 3.0, step=0.5, key="p3_aniso")
+            
+            theta_aniso = np.linspace(0, 2*np.pi, 100)
+            r_x = anisotropy_ratio * np.cos(theta_aniso)
+            r_y = 1.0 * np.sin(theta_aniso)
+            
+            fig_ellipse = go.Figure()
+            fig_ellipse.add_trace(go.Scatter(x=r_x, y=r_y, fill='toself', fillcolor='rgba(8, 145, 178, 0.2)', line=dict(color=WATER_ACCENT, width=3), name=f"Ratio = {anisotropy_ratio}"))
+            fig_ellipse.add_vline(x=0, line_color="gray")
+            fig_ellipse.add_hline(y=0, line_color="gray")
+            
+            fig_ellipse.update_layout(
+                xaxis_title="Horizontal Permeability Plane (kx)", yaxis_title="Vertical Permeability Plane (kz)",
+                xaxis=dict(scaleanchor="y", scaleratio=1, range=[-11, 11]), yaxis=dict(range=[-11, 11]),
+                height=350, margin=dict(l=20, r=20, t=30, b=20), plot_bgcolor="rgba(0,0,0,0)"
+            )
+            st.plotly_chart(fig_ellipse, use_container_width=True)
+
+            # Feature 11: Internal Erosion Susceptibility
+            st.markdown("#### Internal Erosion Susceptibility")
+            st.caption("Piping & Dispersion Risk Profile (Sherard's Concept)")
+            
+            fig_erosion = go.Figure()
+            fig_erosion.add_shape(type="rect", x0=0, x1=15, y0=0, y1=50, fillcolor="rgba(220, 38, 38, 0.15)", line_width=0)
+            fig_erosion.add_shape(type="rect", x0=15, x1=50, y0=0, y1=100, fillcolor="rgba(22, 163, 74, 0.15)", line_width=0)
+            
+            if avg_k < 1e-8:
+                fines, pi_val, risk, marker_col = 85, 45, "Low Piping Risk", '#16a34a'
+            elif avg_k > 1e-4:
+                fines, pi_val, risk, marker_col = 5, 0, "Strict filter required", '#dc2626'
+            else:
+                fines, pi_val, risk, marker_col = 35, 8, "High Erodibility", '#b45309'
+                
+            fig_erosion.add_trace(go.Scatter(x=[pi_val], y=[fines], mode='markers+text',
+                                             text=[soil_choice], textposition="top center",
+                                             marker=dict(color=marker_col, size=14, line=dict(color='black', width=2)), name=risk))
+            
+            dummy_pi = np.random.uniform(0, 40, 20)
+            dummy_fines = np.random.uniform(0, 100, 20)
+            fig_erosion.add_trace(go.Scatter(x=dummy_pi, y=dummy_fines, mode='markers', marker=dict(color='gray', size=5, opacity=0.4), name="Historical Lab Data"))
+            
+            fig_erosion.update_layout(
+                xaxis_title="Plasticity Index (PI)", yaxis_title="Passing No. 200 Sieve (Fines %)",
+                xaxis=dict(range=[0, 50]), yaxis=dict(range=[0, 100]),
+                height=350, margin=dict(l=20, r=20, t=30, b=20), plot_bgcolor="rgba(0,0,0,0)"
+            )
+            st.plotly_chart(fig_erosion, use_container_width=True)
 
     # =======================================================================
     # Tab: Filter criteria
