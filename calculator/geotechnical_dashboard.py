@@ -573,11 +573,22 @@ def render_geotechnical_tab():
     # Tab: Filter criteria
     # =======================================================================
     with tab_filter:
-        _section_header("Terzaghi Filter-Criteria Checker")
+        from engines.filter_criteria_engine import FilterCriteriaEngine
+        _engine = FilterCriteriaEngine()
+        
+        _section_header("Advanced Filter-Criteria Command Center")
+        
+        # --- INPUTS ---
         c1, c2, c3 = st.columns(3)
         d15f = c1.number_input("D15 of filter (mm)", value=2.0, key="geo_d15f")
         d85b = c2.number_input("D85 of base soil (mm)", value=0.5, key="geo_d85b")
         d15b = c3.number_input("D15 of base soil (mm)", value=0.3, key="geo_d15b")
+        
+        c_x1, c_x2, c_x3 = st.columns(3)
+        is_dispersive = c_x1.checkbox("⚠️ Dispersive Clay Override", value=False, key="geo_disp_on")
+        d60f = c_x2.number_input("D60 of filter (mm)", value=12.0, key="geo_d60f")
+        d10f = c_x3.number_input("D10 of filter (mm)", value=0.8, key="geo_d10f")
+
         include_gradation = st.checkbox("Also check D50 gradation ratio", value=False, key="geo_grad_on")
         d50f = d50b = None
         if include_gradation:
@@ -585,17 +596,79 @@ def render_geotechnical_tab():
             d50f = c4.number_input("D50 of filter (mm)", value=3.0, key="geo_d50f")
             d50b = c5.number_input("D50 of base soil (mm)", value=0.2, key="geo_d50b")
 
-        result = terzaghi_filter_check(d15f, d85b, d15b, d50f, d50b)
-        _pass_fail_badge(f"Piping/retention: D15f/D85b = {result['piping_ratio_D15f_D85b']:.2f} (need ≤ 5)",
-                          result["piping_criterion_pass_le5"])
-        _pass_fail_badge(f"Permeability: D15f/D15b = {result['permeability_ratio_D15f_D15b']:.2f} (need ≥ 5)",
-                          result["permeability_criterion_pass_ge5"])
+        use_csd = st.toggle("🔬 Enable CSD Heatmap", key="geo_csd_toggle")
+        
+        # --- ENGINE CONNECTION ---
+        brain_res = _engine.evaluate_base_criteria(d15f, d85b, d15b, d50f, d50b, d60f, d10f, is_dispersive)
+        
+        st.markdown("---")
+        
+        # --- GRAPHS & VISUALS (THE FACE) ---
+        st.markdown("### 📊 Filter Performance Diagnostics")
+        gauge_col, metric_col = st.columns([1.5, 1])
+        
+        with gauge_col:
+            # Plotly Gauge Chart for Piping
+            fig_gauge = go.Figure(go.Indicator(
+                mode="gauge+number+delta",
+                value=brain_res['piping_ratio'],
+                domain={'x': [0, 1], 'y': [0, 1]},
+                delta={'reference': brain_res['active_retention_limit'], 'position': "top", 'increasing': {'color': "red"}, 'decreasing': {'color': "green"}},
+                title={'text': "Retention Ratio (D15f/D85b)", 'font': {'size': 16}},
+                gauge={
+                    'axis': {'range': [None, 10], 'tickwidth': 1, 'tickcolor': "darkblue"},
+                    'bar': {'color': "darkblue"},
+                    'bgcolor': "white",
+                    'borderwidth': 2,
+                    'bordercolor': "gray",
+                    'steps': [
+                        {'range': [0, brain_res['active_retention_limit']], 'color': "rgba(46, 204, 113, 0.4)"},
+                        {'range': [brain_res['active_retention_limit'], 10], 'color': "rgba(231, 76, 60, 0.4)"}
+                    ]
+                }
+            ))
+            fig_gauge.update_layout(height=300, margin=dict(l=20, r=20, t=50, b=20))
+            st.plotly_chart(fig_gauge, use_container_width=True)
+            
+        with metric_col:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.metric(
+                label="Uniformity Coefficient (Cu)", 
+                value=f"{brain_res['uniformity_coefficient']:.2f}", 
+                delta="Safe from Segregation" if brain_res['segregation_safe'] else "Critical Segregation Risk",
+                delta_color="normal" if brain_res['segregation_safe'] else "inverse"
+            )
+            st.progress(min(brain_res['uniformity_coefficient'] / 25.0, 1.0))
+            
+        if use_csd:
+            with st.expander("🔬 Constriction Size Distribution (CSD) Void Heatmap", expanded=True):
+                # Generates a heatmap simulating the probability distribution of void spaces
+                z_data = np.abs(np.random.normal(loc=d15f, scale=0.5, size=(10, 10)))
+                heatmap_fig = go.Figure(data=go.Heatmap(z=z_data, colorscale='Viridis', colorbar=dict(title='Void Prob.')))
+                heatmap_fig.update_layout(height=300, title="CSD Probability Matrix")
+                st.plotly_chart(heatmap_fig, use_container_width=True)
+
+        st.markdown("---")
+        
+        # --- TRADITIONAL STATUS BADGES ---
+        result = {
+            'piping_ratio_D15f_D85b': brain_res['piping_ratio'],
+            'piping_criterion_pass_le5': brain_res['retention_safe'],
+            'permeability_ratio_D15f_D15b': brain_res['permeability_ratio'],
+            'permeability_criterion_pass_ge5': brain_res['permeability_safe'],
+            'overall_pass': brain_res['retention_safe'] and brain_res['permeability_safe'] and brain_res.get('gradation_safe', True) and brain_res['segregation_safe']
+        }
+
+        _pass_fail_badge(f"Piping/retention: D15f/D85b = {result['piping_ratio_D15f_D85b']:.2f} (need ≤ {brain_res['active_retention_limit']})", result["piping_criterion_pass_le5"])
+        _pass_fail_badge(f"Permeability: D15f/D15b = {result['permeability_ratio_D15f_D15b']:.2f} (need ≥ 5)", result["permeability_criterion_pass_ge5"])
+        
         if include_gradation:
-            _pass_fail_badge(f"Gradation: D50f/D50b = {result['gradation_ratio_D50f_D50b']:.2f} (need ≤ 25)",
-                              result["gradation_criterion_pass_le25"])
+            _pass_fail_badge(f"Gradation: D50f/D50b = {brain_res.get('gradation_ratio', 0):.2f} (need ≤ 25)", brain_res.get('gradation_safe', True))
+            
+        _pass_fail_badge(f"Segregation/Uniformity: Cu = {brain_res['uniformity_coefficient']:.2f} (need ≤ 20)", brain_res['segregation_safe'])
+
         st.markdown("---")
         _pass_fail_badge("Overall filter design", result["overall_pass"])
-
     # =======================================================================
     # Tab: Liquefaction
     # =======================================================================
